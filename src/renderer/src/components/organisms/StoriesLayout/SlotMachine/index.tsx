@@ -216,7 +216,15 @@ const SlotMachine = ({
   const attemptsToWin = useRef<number>(getRandomAttemptsToWin())
 
   const forceRerender = useForceRerender()
-  const { ensureConnection, sendArduinoEvent } = useArduinoSerial()
+  const { sendArduinoEvent } = useArduinoSerial()
+
+  function sendIdleEvent() {
+    sendArduinoEvent('i')
+  }
+
+  function sendOffEvent() {
+    sendArduinoEvent('o')
+  }
 
   const setAttemptsToWin = () => {
     console.log('SETTING NEW ATTEMPTS!')
@@ -306,7 +314,6 @@ const SlotMachine = ({
     onPlay()
 
     registerEvent('story-played')
-    await ensureConnection({ userGesture: true })
     if (kiosk) {
       // sendRaspberryEvent('on')
     } else {
@@ -398,8 +405,8 @@ const SlotMachine = ({
 
   const handleRunSlotMachine = async (isPlayingTrack: boolean = false) => {
     playSound('start')
-
-    runSlotMachine(isPlayingTrack)
+    console.log('[SlotMachine] handleRunSlotMachine ->')
+    await runSlotMachine(isPlayingTrack)
   }
 
   const handleSpaceClick = (event: KeyboardEvent) => {
@@ -407,6 +414,10 @@ const SlotMachine = ({
 
     const { key } = event
 
+    if (key == 'r') {
+      handleReloadApp()
+      return
+    }
     if (key == ' ') {
       if (didWin && !isPlaying && !kiosk) {
         handlePlay()
@@ -417,6 +428,22 @@ const SlotMachine = ({
       handleRunSlotMachine(isPlaying)
     }
   }
+
+  function handleReloadApp() {
+    console.log('running')
+    location.reload()
+  }
+
+  useEffect(() => {
+    console.log('isRunning:', isRunning)
+    if (isRunning) {
+      sendOffEvent()
+    } else {
+      if (!didWin) {
+        sendIdleEvent()
+      }
+    }
+  }, [isRunning, didWin])
 
   useEffect(() => {
     winningSoundRef.current = new Howl({

@@ -50,7 +50,7 @@ export type Info = {
   nl: string
 }
 
-type Story = {
+export type Story = {
   _id?: string
   id: string
   audioSrc: string
@@ -58,7 +58,7 @@ type Story = {
   events: Event[]
 }
 
-type StoryLine = {
+export type StoryLine = {
   _id: string
   status: 'preview' | 'published'
   createDate: string
@@ -87,5 +87,27 @@ declare global {
 
   interface Navigator {
     serial?: Serial
+  }
+}
+
+export {}
+
+declare global {
+  interface Window {
+    serial?: {
+      list: () => Promise<
+        Array<{
+          path: string
+          manufacturer: string
+          vendorId: string
+          productId: string
+          isArduino: boolean
+          friendly: string
+        }>
+      >
+      open: (path: string, baudRate?: number) => Promise<boolean>
+      write: (data: Uint8Array | string) => Promise<boolean>
+      close: () => Promise<boolean>
+    }
   }
 }

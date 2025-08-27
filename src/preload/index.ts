@@ -1,22 +1,27 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
-const api = {}
+console.log('[preload] loaded. contextIsolated =', process.contextIsolated)
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+contextBridge.exposeInMainWorld('serial', {
+  list: () => ipcRenderer.invoke('serial:list'),
+  open: (path: string, baudRate = 115200) => ipcRenderer.invoke('serial:open', { path, baudRate }),
+  write: (data: Uint8Array | string) => ipcRenderer.invoke('serial:write', data),
+  close: () => ipcRenderer.invoke('serial:close')
+})
+console.log('[preload] exposed serial?', typeof (globalThis as any).serial !== 'undefined')
+
+const api = {}
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
-    console.error(error)
+    console.error('[preload] expose error', error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.electron = electronAPI
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.api = api
 }

@@ -1,56 +1,72 @@
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { useCallback, useRef } from 'react'
 
+// Types for the preload API
+type SerialDevice = {
+  path: string
+  manufacturer: string
+  vendorId: string
+  productId: string
+  isArduino: boolean
+  friendly: string
+}
+declare global {
+  interface Window {
+    serial?: {
+      list: () => Promise<SerialDevice[]>
+      open: (path: string, baudRate?: number) => Promise<boolean>
+      write: (data: Uint8Array | string) => Promise<boolean>
+      close: () => Promise<boolean>
+    }
+  }
+}
+
 export function useArduinoSerial() {
-  const portRef = useRef<SerialPort | null>(null)
-  const writerRef = useRef<WritableStreamDefaultWriter<Uint8Array> | null>(null)
+  const isOpenRef = useRef(false)
+  const portPathRef = useRef<string | null>(null)
 
-  const openIfNeeded = useCallback(async () => {
-    if (!portRef.current) return
-    if (!portRef.current.readable || !portRef.current.writable) {
-      await portRef.current.open({ baudRate: 115200 })
+  const ensureConnection = useCallback(async ({ baudRate = 115200 } = {}) => {
+    if (!window.serial) {
+      console.warn('[ArduinoSerial] IPC serial API missing (preload not loaded)')
+      return false
     }
-    if (!writerRef.current) {
-      writerRef.current = portRef.current.writable!.getWriter()
+    if (isOpenRef.current) return true
+
+    // List ports and auto-pick Arduino if present, else first port
+    const ports = await window.serial.list()
+    if (!ports.length) {
+      console.warn('[ArduinoSerial] No serial ports found')
+      return false
     }
+    const arduino = ports.find((p) => p.isArduino) ?? ports[0]
+    const ok = await window.serial.open(arduino.path, baudRate)
+    if (ok) {
+      portPathRef.current = arduino.path
+      isOpenRef.current = true
+      console.log('[ArduinoSerial] Connected via', arduino.friendly)
+    }
+    return ok
   }, [])
-
-  const ensureConnection = useCallback(
-    async ({ userGesture = false }: { userGesture?: boolean } = {}) => {
-      if (typeof navigator === 'undefined') return false
-      const nav = navigator
-      if (!nav.serial) return false
-
-      if (writerRef.current) return true
-
-      if (!portRef.current) {
-        const ports = await nav.serial.getPorts()
-        if (ports.length > 0) portRef.current = ports[0]
-      }
-
-      if (!portRef.current && userGesture) {
-        portRef.current = await nav.serial.requestPort()
-      }
-
-      if (!portRef.current) return false
-
-      await openIfNeeded()
-      return true
-    },
-    [openIfNeeded]
-  )
 
   const sendArduinoEvent = useCallback(
     async (payload: string | Uint8Array) => {
-      const ok = await ensureConnection({ userGesture: false })
-      if (!ok || !writerRef.current) return
-
-      const bytes = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload
-
-      await writerRef.current.write(bytes)
+      if (!window.serial) return false
+      const ok = await ensureConnection()
+      if (!ok) return false
+      const res = await window.serial.write(payload)
+      if (!res) console.warn('[ArduinoSerial] write failed')
+      return res
     },
     [ensureConnection]
   )
 
-  return { ensureConnection, sendArduinoEvent }
+  const close = useCallback(async () => {
+    if (!window.serial) return
+    await window.serial.close()
+    isOpenRef.current = false
+    portPathRef.current = null
+    console.log('[ArduinoSerial] Disconnected')
+  }, [])
+
+  return { ensureConnection, sendArduinoEvent, close }
 }
